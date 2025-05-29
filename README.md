@@ -1,6 +1,6 @@
 # Show Kernel Spectrum of 1st Layer Deep Learning Models
 
-A PyQt5-based visualization tool for analyzing the first convolutional layer weights of various deep learning models through multiple visualization modes including Fourier amplitude spectrum analysis.
+A PyQt5-based visualization tool for analyzing the first convolutional layer weights of various deep learning models through multiple visualization modes including Fourier amplitude spectrum analysis with intelligent clustering capabilities.
 
 ## Screenshots
 
@@ -26,18 +26,26 @@ A PyQt5-based visualization tool for analyzing the first convolutional layer wei
 1. **실제 가중치 (Actual Weights)** - Direct visualization of filter weights
 2. **고대비 가중치 (High Contrast Weights)** - Histogram equalized weights for enhanced pattern visibility
 3. **컬러 채널 시각화 (Color Channel Visualization)** - RGB channel visualization of filters
-4. **푸리에 진폭 스펙트럼 (Fourier Amplitude Spectrum)** - 2D FFT analysis of kernel weights
+4. **푸리에 진폭 스펙트럼 (Fourier Amplitude Spectrum)** - 2D FFT analysis of kernel weights with intelligent clustering
 
 ## Key Technical Features
 
-### Fourier Spectrum Analysis
-- Kernel resizing from original size (e.g., 11×11 for AlexNet) to 16×16 using smooth interpolation
-- 2D Fast Fourier Transform (FFT) with frequency shifting for centered spectrum
-- Logarithmic scaling for dynamic range compression
-- Real-time spectrum visualization of up to 64 filters
+### Advanced Fourier Spectrum Analysis
+- **Multi-stage Kernel Processing**: Kernel resizing from original size (e.g., 11×11 for AlexNet) to 16×16, then spectrum upsampling to 32×32
+- **2D Fast Fourier Transform (FFT)** with frequency shifting for centered spectrum
+- **Logarithmic scaling** for dynamic range compression
+- **Real-time spectrum visualization** of up to 64 filters simultaneously
+
+### Intelligent Spectrum Clustering
+- **Cosine Similarity Analysis**: Computes similarity between all spectrum pairs
+- **DBSCAN Clustering**: Groups similar spectra using density-based clustering algorithm
+- **Visual Cluster Identification**: Color-coded borders for filters belonging to the same cluster
+- **Adjustable Similarity Threshold**: Fine-tunable clustering sensitivity (default: 0.93)
+- **Fallback Clustering**: Robust threshold-based clustering when DBSCAN fails
 
 ### Advanced Image Processing
 - **Smooth Kernel Resizing**: Uses 3rd order spline interpolation via `scipy.ndimage.zoom`
+- **Dual-stage Spectrum Processing**: 16×16 FFT followed by 32×32 interpolation for enhanced detail
 - **Multi-channel Support**: Handles both grayscale and RGB input channels
 - **Dynamic Scaling**: Automatic normalization and scaling for optimal visualization
 - **Edge Padding**: Intelligent padding for consistent display sizes
@@ -50,6 +58,8 @@ pip install torch torchvision
 pip install PyQt5
 pip install scipy
 pip install numpy
+pip install scikit-learn  # For clustering algorithms
+pip install matplotlib    # For color processing
 ```
 
 ### Hardware Support
@@ -68,21 +78,26 @@ python kernel_spectrum_visualizer.py
 1. **Model Selection**: Choose from 8 different pre-trained models
 2. **Visualization Mode**: Select visualization method from dropdown
 3. **Real-time Updates**: Automatic visualization updates when changing models or modes
+4. **Cluster Analysis**: Automatic clustering in Fourier spectrum mode with console output
 
 ### Visualization Modes Explained
 
-#### 1. Fourier Amplitude Spectrum Mode
-This mode performs the following operations:
+#### 1. Fourier Amplitude Spectrum Mode (Enhanced)
+This advanced mode performs the following operations:
 - Resizes each kernel from its original dimensions to 16×16 using smooth interpolation
 - Applies 2D FFT to analyze frequency components
 - Centers the spectrum using `fftshift`
+- Upsamples spectrum to 32×32 for enhanced detail
 - Computes magnitude spectrum with logarithmic scaling
-- Displays the result as grayscale intensity maps
+- **Performs cosine similarity clustering** on flattened 32×32 spectra
+- **Displays color-coded borders** for filters in the same cluster
+- Outputs cluster information to console
 
-**Use Cases:**
-- Understanding frequency response characteristics of learned filters
-- Analyzing edge detection capabilities
-- Comparing spectral properties across different architectures
+**Advanced Clustering Features:**
+- **Similarity Threshold**: Adjustable cosine similarity threshold (0.93 default)
+- **Automatic Grouping**: Identifies filters with similar frequency characteristics
+- **Visual Feedback**: 10 distinct colors for different clusters
+- **Console Analytics**: Detailed cluster membership information
 
 #### 2. Color Channel Visualization
 - Displays RGB channels of filters as colored images
@@ -96,14 +111,7 @@ This mode performs the following operations:
 
 ## Technical Implementation
 
-### Model Weight Extraction
-```python
-# Example for AlexNet
-model = models.alexnet(weights=models.AlexNet_Weights.IMAGENET1K_V1)
-weights = model.features[0].weight  # Shape: [64, 3, 11, 11]
-```
-
-### Fourier Transform Pipeline
+### Enhanced Fourier Transform Pipeline
 ```python
 def compute_fft_magnitude(self, input_img):
     # 1. Resize kernel to 16x16
@@ -118,14 +126,53 @@ def compute_fft_magnitude(self, input_img):
     magnitude = np.log1p(magnitude)  # Log scaling
     
     return magnitude
+
+def resize_spectrum_to_32x32(self, spectrum):
+    # Enhanced spectrum resolution for detailed analysis
+    current_h, current_w = spectrum.shape
+    zoom_h = 32 / current_h
+    zoom_w = 32 / current_w
+    
+    resized_spectrum = zoom(spectrum, (zoom_h, zoom_w), order=3)
+    return resized_spectrum
 ```
 
-### Smooth Kernel Resizing
+### Intelligent Clustering System
 ```python
-def resize_kernel_smooth(self, input_img, target_size=(16, 16)):
-    zoom_h = target_size[0] / input_img.shape[0]
-    zoom_w = target_size[1] / input_img.shape[1]
-    return zoom(input_img, (zoom_h, zoom_w), order=3)  # Cubic spline interpolation
+def compute_cosine_similarity_clustering(self, spectrums, threshold=0.93):
+    # Flatten 32x32 spectra for similarity analysis
+    flattened_spectrums = [spectrum.flatten() for spectrum in spectrums]
+    
+    # Compute cosine similarity matrix
+    similarity_matrix = cosine_similarity(flattened_spectrums)
+    distance_matrix = 1 - similarity_matrix
+    distance_matrix = np.clip(distance_matrix, 0, 2)
+    
+    # DBSCAN clustering with fallback
+    eps = 1 - threshold
+    try:
+        dbscan = DBSCAN(eps=eps, min_samples=2, metric='precomputed')
+        cluster_labels = dbscan.fit_predict(distance_matrix)
+    except Exception:
+        cluster_labels = self.simple_threshold_clustering(similarity_matrix, threshold)
+    
+    return cluster_labels
+```
+
+### Visual Cluster Representation
+```python
+def draw_border_on_pixmap(self, pixmap, color, border_width=3):
+    # Creates colored borders for cluster visualization
+    bordered_pixmap = QPixmap(pixmap.size())
+    painter = QPainter(bordered_pixmap)
+    painter.drawPixmap(0, 0, pixmap)
+    
+    pen = QPen(QColor(color[0], color[1], color[2]))
+    pen.setWidth(border_width)
+    painter.setPen(pen)
+    painter.drawRect(bordered_pixmap.rect().adjusted(1, 1, -1, -1))
+    
+    return bordered_pixmap
 ```
 
 ## Model Architecture Details
@@ -143,13 +190,22 @@ def resize_kernel_smooth(self, input_img, target_size=(16, 16)):
 
 *LeNet5 input channels are expanded from 1 to 3 for visualization purposes.
 
-## Frequency Analysis Insights
+## Advanced Analysis Capabilities
 
-The Fourier spectrum visualization reveals:
+### Spectral Clustering Insights
+The intelligent clustering system reveals:
+- **Functional Filter Groups**: Identifies filters with similar frequency responses
+- **Architectural Patterns**: Discovers repeated filter designs within models
+- **Redundancy Analysis**: Highlights potentially redundant filters
+- **Transfer Learning Insights**: Understanding of feature hierarchy
+
+### Frequency Analysis Insights
+The enhanced Fourier spectrum visualization reveals:
 - **Low-frequency components**: Smooth variations and gradients
 - **High-frequency components**: Edge detection and texture analysis
 - **Directional patterns**: Oriented edge detectors
 - **Spatial frequency preferences**: Model-specific frequency biases
+- **Cluster Relationships**: Similar filters grouped by spectral characteristics
 
 ## Applications
 
@@ -158,11 +214,14 @@ The Fourier spectrum visualization reveals:
 - **Architecture Comparison**: Comparing frequency responses across models
 - **Transfer Learning**: Analyzing pre-trained filter characteristics
 - **Model Interpretability**: Visualizing learned representations
+- **Redundancy Detection**: Identifying similar filters for model compression
+- **Spectral Clustering**: Grouping filters by frequency characteristics
 
 ### Educational Applications
 - **CNN Visualization**: Teaching convolutional neural network concepts
 - **Signal Processing**: Demonstrating 2D Fourier analysis
 - **Computer Vision**: Understanding image filtering operations
+- **Machine Learning**: Illustrating clustering algorithms in practice
 
 ## File Structure
 ```
@@ -172,6 +231,18 @@ The Fourier spectrum visualization reveals:
 ├── ScrShot 12.png                # Application interface screenshot
 ├── ScrShot 13.png                # Fourier spectrum visualization screenshot
 └── requirements.txt              # Python dependencies
+```
+
+## Console Output Example
+When running in Fourier Spectrum mode, the application provides detailed clustering information:
+```
+사용 장치: mps
+발견된 클러스터 수: 5
+클러스터 0: 필터 [ 2  5 12 18 23]
+클러스터 1: 필터 [ 1  8 15 22]
+클러스터 2: 필터 [ 3  9 14 19 25]
+클러스터 3: 필터 [ 6 11 17 24]
+클러스터 4: 필터 [ 4  7 13 16 20 21]
 ```
 
 ## Contributing
@@ -193,6 +264,7 @@ This project is open source and available under the [MIT License](LICENSE).
 - torchvision for pre-trained models
 - PyQt5 for the GUI framework
 - SciPy for advanced image processing functions
+- scikit-learn for clustering algorithms
 
 ## Citation
 
@@ -209,4 +281,4 @@ If you use this tool in your research, please consider citing:
 
 ---
 
-**Note**: This tool is designed for educational and research purposes. The visualizations provide insights into the learned representations of various CNN architectures through their first convolutional layer weights.
+**Note**: This tool is designed for educational and research purposes. The visualizations and clustering analysis provide insights into the learned representations of various CNN architectures through their first convolutional layer weights.
