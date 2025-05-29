@@ -2,9 +2,13 @@
 
 A PyQt5-based visualization tool for analyzing the first convolutional layer weights of various deep learning models through multiple visualization modes including Fourier amplitude spectrum analysis.
 
-## Screenshot
+## Screenshots
 
-![Application Screenshot](ScrShot%2013.png)
+### Application Interface
+![Application Interface](ScrShot%2012.png)
+
+### Fourier Spectrum Visualization
+![Fourier Spectrum Analysis](ScrShot%2013.png)
 
 ## Features
 
@@ -165,7 +169,8 @@ The Fourier spectrum visualization reveals:
 .
 ├── kernel_spectrum_visualizer.py  # Main application
 ├── README.md                      # This file
-├── ScrShot 13.png                # Application screenshot
+├── ScrShot 12.png                # Application interface screenshot
+├── ScrShot 13.png                # Fourier spectrum visualization screenshot
 └── requirements.txt              # Python dependencies
 ```
 
